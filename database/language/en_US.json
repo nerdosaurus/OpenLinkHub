@@ -813,6 +813,10 @@
     "txtNexusAction": "Touch action",
     "txtNexusMedia": "Media control",
     "txtNexusAdd": "Add tile",
-    "txtNexusSave": "Save and activate"
+    "txtNexusSave": "Save and activate",
+    "txtInvalidTextDelay": "Invalid text delay value. The range is 10-1000 ms.",
+    "txtInvalidTextDelayVariance": "Invalid text delay variance value. The range is 0-500 ms.",
+    "txtInvalidDelayVariance": "Invalid delay variance value. The range is 0-500 ms.",
+    "txtTextDelayUpdated": "Text delay is successfully updated"
   }
 }
