@@ -464,6 +464,12 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 		return
 	}
 	if d.DeviceProfile.OpenRGBIntegration || d.DeviceProfile.RGBCluster || d.DeviceProfile.RgbOff {
+		logger.Log(logger.Fields{
+			"serial":  d.Serial,
+			"openrgb": d.DeviceProfile.OpenRGBIntegration,
+			"cluster": d.DeviceProfile.RGBCluster,
+			"off":     d.DeviceProfile.RgbOff,
+		}).Info("Macro indicator skipped: device lighting is not managed by OpenLinkHub")
 		return
 	}
 	d.StopMacroIndicator()
@@ -518,6 +524,7 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 		addKey(trigger.Row, trigger.Key)
 	}
 	if len(restores) == 0 {
+		logger.Log(logger.Fields{"serial": d.Serial, "target": indicator.Target, "row": trigger.Row, "key": trigger.Key}).Warn("Macro indicator skipped: no matching keys")
 		return
 	}
 
@@ -541,6 +548,7 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 		speed = 1
 	}
 	base := indicator.Color
+	logger.Log(logger.Fields{"serial": d.Serial, "target": indicator.Target, "keys": len(restores), "speed": speed}).Info("Macro indicator started")
 
 	go func() {
 		defer close(done)
@@ -555,6 +563,7 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 				}
 				d.DeviceProfile.RGBProfile = originalProfile
 				d.setDeviceColor()
+				logger.Log(logger.Fields{"serial": d.Serial, "keys": len(restores)}).Info("Macro indicator stopped")
 				return
 			case <-ticker.C:
 				factor := 1.0

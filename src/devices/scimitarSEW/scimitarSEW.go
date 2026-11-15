@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/bits"
 	"os"
 	"path/filepath"
@@ -123,6 +124,9 @@ type Device struct {
 	checkOnlineMu         sync.Mutex
 	stopRepeat            chan struct{}
 	stopRepeatMutex       sync.Mutex
+	indicatorStop         chan struct{}
+	indicatorDone         chan struct{}
+	indicatorMutex        sync.Mutex
 	loopState             *macro.LoopState
 }
 
@@ -2585,6 +2589,138 @@ func (d *Device) ReleaseKeys() {
 			inputmanager.InputControlMouseHold(d.MacroTracker[key].Value, false)
 		}
 		d.deleteFromMacroTracker(key)
+	}
+}
+
+// StartMacroIndicator pulses the zone that triggered the macro. It temporarily
+// freezes the active effect and restores it on stop.
+func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Indicator) {
+	if indicator == nil || !indicator.Enabled || d.DeviceProfile == nil {
+		return
+	}
+	if d.DeviceProfile.OpenRGBIntegration || d.DeviceProfile.RGBCluster || d.DeviceProfile.RgbOff {
+		logger.Log(logger.Fields{
+			"serial":  d.Serial,
+			"openrgb": d.DeviceProfile.OpenRGBIntegration,
+			"cluster": d.DeviceProfile.RGBCluster,
+			"off":     d.DeviceProfile.RgbOff,
+		}).Info("Macro indicator skipped: device lighting is not managed by OpenLinkHub")
+		return
+	}
+	d.StopMacroIndicator()
+
+	target := strings.ToLower(strings.TrimSpace(indicator.Target))
+	zoneName := "side"
+	switch {
+	case target == "" || target == "trigger" || target == "side" || target == "zone:side":
+		zoneName = "side"
+	case strings.HasPrefix(target, "zone:"):
+		zoneName = strings.TrimPrefix(target, "zone:")
+	case target == "logo":
+		zoneName = "logo"
+	case target == "scroll" || target == "wheel":
+		zoneName = "scroll"
+	case target == "front":
+		zoneName = "front"
+	}
+
+	zoneIndex := -1
+	for key, zone := range d.DeviceProfile.ZoneColors {
+		if strings.EqualFold(zone.Name, zoneName) {
+			zoneIndex = key
+			break
+		}
+	}
+	if zoneIndex < 0 {
+		for key, zone := range d.DeviceProfile.ZoneColors {
+			if strings.EqualFold(zone.Name, "side") {
+				zoneIndex = key
+				break
+			}
+		}
+	}
+	if zoneIndex < 0 || d.DeviceProfile.ZoneColors[zoneIndex].Color == nil {
+		logger.Log(logger.Fields{"serial": d.Serial, "target": indicator.Target}).Warn("Macro indicator skipped: no matching zone")
+		return
+	}
+
+	zone := d.DeviceProfile.ZoneColors[zoneIndex]
+	original := *zone.Color
+	originalProfile := d.DeviceProfile.RGBProfile
+
+	if d.activeRgb != nil {
+		d.activeRgb.Exit <- true
+		d.activeRgb = nil
+	}
+	d.DeviceProfile.RGBProfile = "mouse"
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	d.indicatorMutex.Lock()
+	d.indicatorStop = stop
+	d.indicatorDone = done
+	d.indicatorMutex.Unlock()
+
+	effect := strings.ToLower(indicator.Effect)
+	speed := indicator.Speed
+	if speed <= 0 {
+		speed = 1
+	}
+	base := indicator.Color
+	logger.Log(logger.Fields{"serial": d.Serial, "zone": zone.Name, "effect": effect, "speed": speed}).Info("Macro indicator started")
+
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(40 * time.Millisecond)
+		defer ticker.Stop()
+		start := time.Now()
+		for {
+			select {
+			case <-stop:
+				restoreZone := d.DeviceProfile.ZoneColors[zoneIndex]
+				restoreZone.Color = &original
+				d.DeviceProfile.ZoneColors[zoneIndex] = restoreZone
+				d.DeviceProfile.RGBProfile = originalProfile
+				d.setDeviceColor()
+				logger.Log(logger.Fields{"serial": d.Serial, "zone": zone.Name}).Info("Macro indicator stopped")
+				return
+			case <-ticker.C:
+				factor := 1.0
+				if effect != "static" {
+					phase := math.Sin((time.Since(start).Seconds() / 1.6) * speed * 2 * math.Pi)
+					factor = 0.30 + 0.70*(0.5+0.5*phase)
+				}
+				color := rgb.Color{
+					Red:        base.Red * factor,
+					Green:      base.Green * factor,
+					Blue:       base.Blue * factor,
+					Brightness: 1,
+					Hex: fmt.Sprintf("#%02x%02x%02x",
+						int(base.Red*factor), int(base.Green*factor), int(base.Blue*factor)),
+				}
+				pulsedZone := d.DeviceProfile.ZoneColors[zoneIndex]
+				pulsedZone.Color = &color
+				d.DeviceProfile.ZoneColors[zoneIndex] = pulsedZone
+				d.setDeviceColor()
+			}
+		}
+	}()
+}
+
+// StopMacroIndicator stops the status animation and restores the profile.
+func (d *Device) StopMacroIndicator() {
+	d.indicatorMutex.Lock()
+	stop := d.indicatorStop
+	done := d.indicatorDone
+	d.indicatorStop = nil
+	d.indicatorDone = nil
+	d.indicatorMutex.Unlock()
+	if stop == nil {
+		return
+	}
+	close(stop)
+	if done != nil {
+		<-done
 	}
 }
 

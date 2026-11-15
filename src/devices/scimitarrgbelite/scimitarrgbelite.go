@@ -2398,6 +2398,12 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 		return
 	}
 	if d.DeviceProfile.OpenRGBIntegration || d.DeviceProfile.RGBCluster || d.DeviceProfile.RgbOff {
+		logger.Log(logger.Fields{
+			"serial":  d.Serial,
+			"openrgb": d.DeviceProfile.OpenRGBIntegration,
+			"cluster": d.DeviceProfile.RGBCluster,
+			"off":     d.DeviceProfile.RgbOff,
+		}).Info("Macro indicator skipped: device lighting is not managed by OpenLinkHub")
 		return
 	}
 	d.StopMacroIndicator()
@@ -2433,11 +2439,13 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 		}
 	}
 	if zoneIndex < 0 {
+		logger.Log(logger.Fields{"serial": d.Serial, "target": indicator.Target}).Warn("Macro indicator skipped: no matching zone")
 		return
 	}
 
 	zone := d.DeviceProfile.ZoneColors[zoneIndex]
 	if zone.Color == nil {
+		logger.Log(logger.Fields{"serial": d.Serial, "zone": zone.Name}).Warn("Macro indicator skipped: zone has no colour")
 		return
 	}
 	original := *zone.Color
@@ -2462,6 +2470,7 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 		speed = 1
 	}
 	base := indicator.Color
+	logger.Log(logger.Fields{"serial": d.Serial, "zone": zone.Name, "effect": effect, "speed": speed}).Info("Macro indicator started")
 
 	go func() {
 		defer close(done)
@@ -2476,6 +2485,7 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 				d.DeviceProfile.ZoneColors[zoneIndex] = restoreZone
 				d.DeviceProfile.RGBProfile = originalProfile
 				d.setDeviceColor()
+				logger.Log(logger.Fields{"serial": d.Serial, "zone": zone.Name}).Info("Macro indicator stopped")
 				return
 			case <-ticker.C:
 				factor := 1.0
