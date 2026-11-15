@@ -19,11 +19,13 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"os"
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -115,6 +117,9 @@ type Device struct {
 	mouseLoopStopCh        chan struct{}
 	stopRepeat             chan struct{}
 	stopRepeatMutex        sync.Mutex
+	indicatorStop          chan struct{}
+	indicatorDone          chan struct{}
+	indicatorMutex         sync.Mutex
 	dispatch               dispatcher.DeviceDispatcher
 	queue                  chan []byte
 	queueStop              chan struct{}
@@ -411,6 +416,195 @@ func (d *Device) getModifierKeyShift(modifierKey int) byte {
 }
 
 // getKeyData will return key data for given key hash
+func (d *Device) getKeyPosition(target *keyboards.Key) (int, int, bool) {
+	if target == nil || d.DeviceProfile == nil {
+		return 0, 0, false
+	}
+	for rowIndex, row := range d.DeviceProfile.Keyboards[d.DeviceProfile.Profile].Row {
+		for keyIndex, key := range row.Keys {
+			if key.KeyNameInternal == target.KeyNameInternal && key.KeyName == target.KeyName {
+				return rowIndex, keyIndex, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+func (d *Device) keyAt(rowIndex, keyIndex int) (keyboards.Key, bool) {
+	if d.DeviceProfile == nil {
+		return keyboards.Key{}, false
+	}
+	row, ok := d.DeviceProfile.Keyboards[d.DeviceProfile.Profile].Row[rowIndex]
+	if !ok {
+		return keyboards.Key{}, false
+	}
+	key, ok := row.Keys[keyIndex]
+	return key, ok
+}
+
+func (d *Device) setKeyColor(rowIndex, keyIndex int, color rgb.Color) {
+	profile := d.DeviceProfile.Keyboards[d.DeviceProfile.Profile]
+	row, ok := profile.Row[rowIndex]
+	if !ok {
+		return
+	}
+	key, ok := row.Keys[keyIndex]
+	if !ok {
+		return
+	}
+	key.Color = color
+	row.Keys[keyIndex] = key
+	profile.Row[rowIndex] = row
+	d.DeviceProfile.Keyboards[d.DeviceProfile.Profile] = profile
+}
+
+// StartMacroIndicator pulses the key, row or whole keyboard while a macro runs.
+func (d *Device) StartMacroIndicator(triggerKey int, indicator *macro.Indicator) {
+	if indicator == nil || !indicator.Enabled || d.DeviceProfile == nil {
+		return
+	}
+	if d.DeviceProfile.OpenRGBIntegration || d.DeviceProfile.RGBCluster || d.DeviceProfile.RgbOff {
+		return
+	}
+	d.StopMacroIndicator()
+
+	type restoreKey struct {
+		rowIndex int
+		keyIndex int
+		color    rgb.Color
+	}
+	restores := make([]restoreKey, 0)
+	addKey := func(rowIndex, keyIndex int) {
+		key, ok := d.keyAt(rowIndex, keyIndex)
+		if !ok {
+			return
+		}
+		for _, existing := range restores {
+			if existing.rowIndex == rowIndex && existing.keyIndex == keyIndex {
+				return
+			}
+		}
+		restores = append(restores, restoreKey{rowIndex, keyIndex, key.Color})
+	}
+
+	target := strings.ToLower(strings.TrimSpace(indicator.Target))
+	switch {
+	case target == "all":
+		for rowIndex, row := range d.DeviceProfile.Keyboards[d.DeviceProfile.Profile].Row {
+			for keyIndex := range row.Keys {
+				addKey(rowIndex, keyIndex)
+			}
+		}
+	case strings.HasPrefix(target, "row:"):
+		if rowIndex, err := strconv.Atoi(strings.TrimPrefix(target, "row:")); err == nil {
+			if row, ok := d.DeviceProfile.Keyboards[d.DeviceProfile.Profile].Row[rowIndex]; ok {
+				for keyIndex := range row.Keys {
+					addKey(rowIndex, keyIndex)
+				}
+			}
+		}
+	case strings.HasPrefix(target, "key:"):
+		if keyIndex, err := strconv.Atoi(strings.TrimPrefix(target, "key:")); err == nil {
+			for rowIndex, row := range d.DeviceProfile.Keyboards[d.DeviceProfile.Profile].Row {
+				if _, ok := row.Keys[keyIndex]; ok {
+					addKey(rowIndex, keyIndex)
+				}
+			}
+		}
+	case target == "row":
+		for rowIndex, row := range d.DeviceProfile.Keyboards[d.DeviceProfile.Profile].Row {
+			if _, ok := row.Keys[triggerKey]; ok {
+				for keyIndex := range row.Keys {
+					addKey(rowIndex, keyIndex)
+				}
+			}
+		}
+	default:
+		for rowIndex, row := range d.DeviceProfile.Keyboards[d.DeviceProfile.Profile].Row {
+			if _, ok := row.Keys[triggerKey]; ok {
+				addKey(rowIndex, triggerKey)
+			}
+		}
+	}
+	if len(restores) == 0 {
+		return
+	}
+
+	originalProfile := d.DeviceProfile.RGBProfile
+	if d.activeRgb != nil {
+		d.activeRgb.Exit <- true
+		d.activeRgb = nil
+	}
+	d.DeviceProfile.RGBProfile = "keyboard"
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	d.indicatorMutex.Lock()
+	d.indicatorStop = stop
+	d.indicatorDone = done
+	d.indicatorMutex.Unlock()
+
+	effect := strings.ToLower(indicator.Effect)
+	speed := indicator.Speed
+	if speed <= 0 {
+		speed = 1
+	}
+	base := indicator.Color
+
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(40 * time.Millisecond)
+		defer ticker.Stop()
+		start := time.Now()
+		for {
+			select {
+			case <-stop:
+				for _, item := range restores {
+					d.setKeyColor(item.rowIndex, item.keyIndex, item.color)
+				}
+				d.DeviceProfile.RGBProfile = originalProfile
+				d.setDeviceColor()
+				return
+			case <-ticker.C:
+				factor := 1.0
+				if effect != "static" {
+					phase := math.Sin((time.Since(start).Seconds() / 1.6) * speed * 2 * math.Pi)
+					factor = 0.30 + 0.70*(0.5+0.5*phase)
+				}
+				color := rgb.Color{
+					Red:        base.Red * factor,
+					Green:      base.Green * factor,
+					Blue:       base.Blue * factor,
+					Brightness: 1,
+					Hex: fmt.Sprintf("#%02x%02x%02x",
+						int(base.Red*factor), int(base.Green*factor), int(base.Blue*factor)),
+				}
+				for _, item := range restores {
+					d.setKeyColor(item.rowIndex, item.keyIndex, color)
+				}
+				d.setDeviceColor()
+			}
+		}
+	}()
+}
+
+// StopMacroIndicator stops the status animation and restores the keyboard.
+func (d *Device) StopMacroIndicator() {
+	d.indicatorMutex.Lock()
+	stop := d.indicatorStop
+	done := d.indicatorDone
+	d.indicatorStop = nil
+	d.indicatorDone = nil
+	d.indicatorMutex.Unlock()
+	if stop == nil {
+		return
+	}
+	close(stop)
+	if done != nil {
+		<-done
+	}
+}
+
 func (d *Device) getKeyData(keyHash string) *keyboards.Key {
 	for _, value := range d.DeviceProfile.Keyboards[d.DeviceProfile.Profile].Row {
 		for _, key := range value.Keys {
@@ -2640,6 +2834,12 @@ func (d *Device) triggerKeyAssignment(value []byte, functionKey bool, modifierKe
 			return
 		}
 
+		rowIndex, keyIndex, keyFound := d.getKeyPosition(key)
+		_ = rowIndex
+		if !keyFound {
+			keyIndex = 0
+		}
+
 		// Process it
 		switch key.ActionType {
 		case 1, 3:
@@ -2679,7 +2879,7 @@ func (d *Device) triggerKeyAssignment(value []byte, functionKey bool, modifierKe
 				logger.Log(logger.Fields{"serial": d.Serial}).Error("Invalid macro profile")
 				return
 			}
-			macro.Play(d, macroProfile, key.ActionCommand, d.loopState)
+			macro.Play(d, macroProfile, key.ActionCommand, d.loopState, d.Serial, keyIndex)
 			break
 		case 21:
 			d.ChangeDeviceProfile(key.DeviceId)

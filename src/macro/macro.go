@@ -8,6 +8,7 @@ import (
 	"OpenLinkHub/src/common"
 	"OpenLinkHub/src/config"
 	"OpenLinkHub/src/logger"
+	"OpenLinkHub/src/rgb"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -22,6 +23,18 @@ type Macro struct {
 	Repeat      int             `json:"repeat"`
 	RepeatDelay int             `json:"repeatDelay"`
 	Actions     map[int]Actions `json:"actions"`
+	Indicator   *Indicator      `json:"indicator,omitempty"`
+}
+
+// Indicator configures the optional status animation shown while a macro is
+// executing. Target is semantic so the same macro can run on different devices:
+// "trigger", "zone:<name>", "key:<index>", "row:<index>" or "all".
+type Indicator struct {
+	Enabled bool      `json:"enabled"`
+	Effect  string    `json:"effect"`
+	Color   rgb.Color `json:"color"`
+	Speed   float64   `json:"speed"`
+	Target  string    `json:"target"`
 }
 
 type Actions struct {
@@ -179,6 +192,20 @@ func UpdateMacroValue(macroId, macroIndex int, macroAction *Actions) uint8 {
 			SaveProfile(profile, val)
 			return 1
 		}
+	}
+	return 0
+}
+
+// UpdateMacroIndicator updates the optional running-indicator config.
+func UpdateMacroIndicator(macroId int, indicator *Indicator) uint8 {
+	mutex.Lock()
+	defer mutex.Unlock()
+	if val, ok := macros[macroId]; ok {
+		profile := fmt.Sprintf("%s/database/macros/%s.json", config.GetConfig().ConfigPath, strings.ToLower(val.Name))
+		val.Indicator = indicator
+		macros[macroId] = val
+		SaveProfile(profile, val)
+		return 1
 	}
 	return 0
 }

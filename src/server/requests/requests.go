@@ -201,6 +201,7 @@ type Payload struct {
 	MousePositionAbsolute         bool                  `json:"mousePositionAbsolute"`
 	MacroRepeat                   int                   `json:"macroRepeat"`
 	MacroRepeatDelay              int                   `json:"macroRepeatDelay"`
+	Indicator                     *macro.Indicator      `json:"indicator"`
 	TextDelayMs                   int                   `json:"textDelayMs"`
 	TextDelayVarianceMs           int                   `json:"textDelayVarianceMs"`
 	DelayVarianceMs               int                   `json:"delayVarianceMs"`
@@ -4279,6 +4280,36 @@ func ProcessUpdateMacroSettings(r *http.Request) *Payload {
 			Status:  0,
 		}
 	}
+}
+
+// ProcessSetMacroIndicator will process a macro running-indicator update
+func ProcessSetMacroIndicator(r *http.Request) *Payload {
+	req := &Payload{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return &Payload{Message: language.GetValue("txtUnableToValidateRequest"), Code: http.StatusOK, Status: 0}
+	}
+	if req.MacroId < 0 || req.Indicator == nil {
+		return &Payload{Message: language.GetValue("txtInvalidMacroSelected"), Code: http.StatusOK, Status: 0}
+	}
+	if macro.UpdateMacroIndicator(req.MacroId, req.Indicator) == 1 {
+		return &Payload{Message: language.GetValue("txtMacroSettingsUpdated"), Code: http.StatusOK, Status: 1}
+	}
+	return &Payload{Message: language.GetValue("txtUnableToUpdateMacroSettings"), Code: http.StatusOK, Status: 0}
+}
+
+// ProcessStopMacro stops a running macro (loop or one-shot)
+func ProcessStopMacro(r *http.Request) *Payload {
+	req := &Payload{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return &Payload{Message: language.GetValue("txtUnableToValidateRequest"), Code: http.StatusOK, Status: 0}
+	}
+	if req.MacroId < 0 {
+		return &Payload{Message: language.GetValue("txtInvalidMacroSelected"), Code: http.StatusOK, Status: 0}
+	}
+	if macro.StopRunning(req.MacroId, req.DeviceId) > 0 {
+		return &Payload{Message: "Macro stopped", Code: http.StatusOK, Status: 1}
+	}
+	return &Payload{Message: "Macro is not running", Code: http.StatusOK, Status: 0}
 }
 
 // ProcessDeleteMacroProfile will process deletion of macro profile

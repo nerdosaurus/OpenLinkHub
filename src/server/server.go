@@ -374,6 +374,38 @@ func getMacro(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// getMacroStatus returns currently running macros
+func getMacroStatus(w http.ResponseWriter, _ *http.Request) {
+	resp := &Response{
+		Code:   http.StatusOK,
+		Status: 1,
+		Data:   macro.GetRunning(),
+	}
+	resp.Send(w)
+}
+
+// setMacroIndicator handles a macro running-indicator update
+func setMacroIndicator(w http.ResponseWriter, r *http.Request) {
+	request := requests.ProcessSetMacroIndicator(r)
+	resp := &Response{
+		Code:    request.Code,
+		Status:  request.Status,
+		Message: request.Message,
+	}
+	resp.Send(w)
+}
+
+// stopMacro handles stopping a running macro
+func stopMacro(w http.ResponseWriter, r *http.Request) {
+	request := requests.ProcessStopMacro(r)
+	resp := &Response{
+		Code:    request.Code,
+		Status:  request.Status,
+		Message: request.Message,
+	}
+	resp.Send(w)
+}
+
 // getKeyName returns response on /api/macro/keyInfo/
 func getKeyName(w http.ResponseWriter, r *http.Request) {
 	keyIndex, valid := getVar("/api/macro/keyInfo/", r)
@@ -2963,6 +2995,7 @@ func setRoutes() http.Handler {
 	handleFunc(r, "/api/input/controller", http.MethodGet, getControllerKeys)
 	handleFunc(r, "/api/led/", http.MethodGet, getDeviceLed)
 	handleFunc(r, "/api/macro/", http.MethodGet, getMacro)
+	handleFunc(r, "/api/macro/status", http.MethodGet, getMacroStatus)
 	handleFunc(r, "/api/macro/keyInfo/", http.MethodGet, getKeyName)
 	handleFunc(r, "/api/dashboard", http.MethodGet, getDashboardSettings)
 	handleFunc(r, "/api/dashboard/devices/get", http.MethodGet, getDashboardDevices)
@@ -3078,6 +3111,8 @@ func setRoutes() http.Handler {
 	handleFunc(r, "/api/keyboard/setFlashTap", http.MethodPost, setKeyboardFlashTap)
 	handleFunc(r, "/api/macro/updateValue", http.MethodPost, updateMacroValue)
 	handleFunc(r, "/api/macro/updateSettings", http.MethodPost, updateMacroSettings)
+	handleFunc(r, "/api/macro/indicator", http.MethodPost, setMacroIndicator)
+	handleFunc(r, "/api/macro/stop", http.MethodPost, stopMacro)
 	handleFunc(r, "/api/keyboard/dial/setColors", http.MethodPost, setKeyboardControlDialColors)
 	handleFunc(r, "/api/setSupportedDevices", http.MethodPost, setSupportedDevices)
 	handleFunc(r, "/api/restore", http.MethodPost, backup.PerformRestore)

@@ -23,6 +23,14 @@ type DeviceHooks interface {
 	NewStopRepeat() <-chan struct{}
 }
 
+// IndicatorHooks is optionally implemented by devices that can show a status
+// animation on the key/zone that triggered the macro. Keeping it separate from
+// DeviceHooks avoids forcing every device to implement it.
+type IndicatorHooks interface {
+	StartMacroIndicator(triggerKey int, indicator *Indicator)
+	StopMacroIndicator()
+}
+
 // LoopState tracks running macro loops, keyed by an arbitrary comparable value
 // (e.g. a button bitmask or macro id). Each device owns its own LoopState so
 // loops never collide across devices.
@@ -51,6 +59,16 @@ func (l *LoopState) Toggle(key any) (stop chan struct{}, running bool) {
 	return stop, false
 }
 
+// Stop halts a running loop for key, if present.
+func (l *LoopState) Stop(key any) {
+	l.mu.Lock()
+	if stop, ok := l.loops[key]; ok {
+		delete(l.loops, key)
+		close(stop)
+	}
+	l.mu.Unlock()
+}
+
 // IsRunning reports whether a loop is currently running for key.
 func (l *LoopState) IsRunning(key any) bool {
 	l.mu.Lock()
@@ -59,12 +77,37 @@ func (l *LoopState) IsRunning(key any) bool {
 	return ok
 }
 
+func waitStop(stop <-chan struct{}, duration time.Duration) bool {
+	if duration <= 0 {
+		return true
+	}
+	select {
+	case <-stop:
+		return false
+	case <-time.After(duration):
+		return true
+	}
+}
+
 // Play executes a macro profile's actions, honoring hold/repeat/loop semantics.
 // A negative profile.Repeat means "loop" (toggle on/off via loopKey); zero or
 // positive means "play N times" (0 plays once).
-func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState) {
-	runMacro := func(firstRun bool) {
+//
+// deviceSerial and triggerKey are used for the running-status registry and the
+// optional indicator animation; they do not affect playback.
+func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, deviceSerial string, triggerKey int) {
+	if profile == nil {
+		return
+	}
+
+	runMacro := func(firstRun bool, stop <-chan struct{}) bool {
 		for i := 0; i < len(profile.Actions); i++ {
+			select {
+			case <-stop:
+				return false
+			default:
+			}
+
 			v, valid := profile.Actions[i]
 			if !valid {
 				continue
@@ -99,9 +142,16 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState) {
 			case 9: // mouse button
 				if v.ActionRepeat > 0 && !v.ActionHold {
 					for z := 0; z < int(v.ActionRepeat); z++ {
+						select {
+						case <-stop:
+							return false
+						default:
+						}
 						inputmanager.InputControlMouse(v.ActionCommand)
 						if v.ActionRepeatDelay > 0 && v.ActionRepeat > 1 {
-							time.Sleep(time.Duration(v.ActionRepeatDelay) * time.Millisecond)
+							if !waitStop(stop, time.Duration(v.ActionRepeatDelay)*time.Millisecond) {
+								return false
+							}
 						}
 					}
 				} else if v.ActionHold && v.ActionRepeat == 0 {
@@ -111,14 +161,23 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState) {
 				}
 			case 5: // delay
 				if v.ActionDelay > 0 {
-					time.Sleep(time.Duration(inputmanager.DelayMilliseconds(v.ActionDelay)) * time.Millisecond)
+					if !waitStop(stop, time.Duration(inputmanager.DelayMilliseconds(v.ActionDelay))*time.Millisecond) {
+						return false
+					}
 				}
 			case 6: // text
 				if v.ActionRepeat > 0 {
 					for z := 0; z < int(v.ActionRepeat); z++ {
+						select {
+						case <-stop:
+							return false
+						default:
+						}
 						inputmanager.InputControlKeyboardText(v.ActionText)
 						if v.ActionRepeatDelay > 0 && v.ActionRepeat > 1 {
-							time.Sleep(time.Duration(v.ActionRepeatDelay) * time.Millisecond)
+							if !waitStop(stop, time.Duration(v.ActionRepeatDelay)*time.Millisecond) {
+								return false
+							}
 						}
 					}
 				} else {
@@ -153,30 +212,61 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState) {
 				}
 			}
 		}
+		return true
+	}
+
+	cleanup := func() {
+		hooks.NewStopRepeat()
+		hooks.ReleaseKeys()
+	}
+
+	startIndicator := func() func() {
+		if profile.Indicator == nil || !profile.Indicator.Enabled {
+			return func() {}
+		}
+		if indicatorHooks, ok := hooks.(IndicatorHooks); ok {
+			indicatorHooks.StartMacroIndicator(triggerKey, profile.Indicator)
+			return indicatorHooks.StopMacroIndicator
+		}
+		return func() {}
 	}
 
 	if profile.Repeat < 0 {
-		stop, running := loops.Toggle(loopKey)
-		if running {
+		stop, isRunning := loops.Toggle(loopKey)
+		key := runningKey(deviceSerial, profile.Id, triggerKey)
+		if isRunning {
 			close(stop)
-			hooks.ReleaseKeys()
+			UnregisterRunning(key)
+			cleanup()
 			return
 		}
+
+		RegisterRunning(deviceSerial, profile.Id, profile.Name, triggerKey, func() {
+			loops.Stop(loopKey)
+		})
+
 		go func() {
+			defer UnregisterRunning(key)
+			stopIndicator := startIndicator()
+			defer stopIndicator()
+
 			firstRun := true
 			for {
 				select {
 				case <-stop:
+					cleanup()
 					return
 				default:
 				}
-				runMacro(firstRun)
+				if !runMacro(firstRun, stop) {
+					cleanup()
+					return
+				}
 				firstRun = false
 				if profile.RepeatDelay > 0 {
-					select {
-					case <-stop:
+					if !waitStop(stop, time.Duration(profile.RepeatDelay)*time.Millisecond) {
+						cleanup()
 						return
-					case <-time.After(time.Duration(profile.RepeatDelay) * time.Millisecond):
 					}
 				}
 			}
@@ -184,14 +274,28 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState) {
 		return
 	}
 
+	stop := make(chan struct{})
+	key := RegisterRunning(deviceSerial, profile.Id, profile.Name, triggerKey, func() {
+		close(stop)
+	})
+	defer UnregisterRunning(key)
+	stopIndicator := startIndicator()
+	defer stopIndicator()
+
 	repeat := profile.Repeat
 	if repeat <= 0 {
 		repeat = 1
 	}
 	for r := 0; r < repeat; r++ {
-		runMacro(r == 0)
+		if !runMacro(r == 0, stop) {
+			cleanup()
+			return
+		}
 		if profile.RepeatDelay > 0 && r < repeat-1 {
-			time.Sleep(time.Duration(profile.RepeatDelay) * time.Millisecond)
+			if !waitStop(stop, time.Duration(profile.RepeatDelay)*time.Millisecond) {
+				cleanup()
+				return
+			}
 		}
 	}
 }
