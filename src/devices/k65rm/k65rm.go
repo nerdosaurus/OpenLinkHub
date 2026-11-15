@@ -19,7 +19,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"math"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -547,7 +546,7 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 	if speed <= 0 {
 		speed = 1
 	}
-	base := indicator.Color
+	base := macro.IndicatorRGB(indicator.Color)
 	logger.Log(logger.Fields{"serial": d.Serial, "target": indicator.Target, "keys": len(restores), "speed": speed}).Info("Macro indicator started")
 
 	go func() {
@@ -566,19 +565,7 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 				logger.Log(logger.Fields{"serial": d.Serial, "keys": len(restores)}).Info("Macro indicator stopped")
 				return
 			case <-ticker.C:
-				factor := 1.0
-				if effect != "static" {
-					phase := math.Sin((time.Since(start).Seconds() / 1.6) * speed * 2 * math.Pi)
-					factor = 0.30 + 0.70*(0.5+0.5*phase)
-				}
-				color := rgb.Color{
-					Red:        base.Red * factor,
-					Green:      base.Green * factor,
-					Blue:       base.Blue * factor,
-					Brightness: 1,
-					Hex: fmt.Sprintf("#%02x%02x%02x",
-						int(base.Red*factor), int(base.Green*factor), int(base.Blue*factor)),
-				}
+				color := macro.IndicatorColor(base, effect, time.Since(start), speed)
 				for _, item := range restores {
 					d.setKeyColor(item.rowIndex, item.keyIndex, color)
 				}
