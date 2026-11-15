@@ -17,6 +17,7 @@ type Running struct {
 	MacroName    string `json:"macroName"`
 	DeviceSerial string `json:"deviceSerial"`
 	TriggerKey   int    `json:"triggerKey"`
+	TriggerRow   int    `json:"triggerRow"`
 	StartedAt    int64  `json:"startedAt"` // Unix milliseconds
 	Started      string `json:"started"`   // RFC3339, for humans
 	stop         func()
@@ -32,15 +33,16 @@ func runningKey(serial string, macroId, triggerKey int) string {
 }
 
 // RegisterRunning records a started macro and returns its registry key.
-func RegisterRunning(serial string, macroId int, name string, triggerKey int, stop func()) string {
-	key := runningKey(serial, macroId, triggerKey)
+func RegisterRunning(trigger Trigger, macroId int, name string, stop func()) string {
+	key := runningKey(trigger.Serial, macroId, trigger.Key)
 	now := time.Now()
 	runningMutex.Lock()
 	running[key] = &Running{
 		MacroId:      macroId,
 		MacroName:    name,
-		DeviceSerial: serial,
-		TriggerKey:   triggerKey,
+		DeviceSerial: trigger.Serial,
+		TriggerKey:   trigger.Key,
+		TriggerRow:   trigger.Row,
 		StartedAt:    now.UnixMilli(),
 		Started:      now.Format(time.RFC3339),
 		stop:         stop,

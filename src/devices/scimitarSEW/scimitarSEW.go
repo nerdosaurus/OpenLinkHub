@@ -2690,7 +2690,7 @@ func (d *Device) TriggerKeyAssignment(value uint32) {
 					logger.Log(logger.Fields{"serial": d.Serial}).Error("Invalid macro profile")
 					return
 				}
-				macro.Play(d, macroProfile, mask, d.loopState, d.Serial, int(mask))
+				macro.Play(d, macroProfile, mask, d.loopState, macro.Trigger{Serial: d.Serial, Key: int(mask)})
 				break
 			case 11:
 				d.rotateDeviceProfile()

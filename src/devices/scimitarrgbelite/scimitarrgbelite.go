@@ -2378,7 +2378,7 @@ func (d *Device) triggerKeyAssignment(value uint32) {
 					logger.Log(logger.Fields{"serial": d.Serial}).Error("Invalid macro profile")
 					return
 				}
-				macro.Play(d, macroProfile, mask, d.loopState, d.Serial, int(mask))
+				macro.Play(d, macroProfile, mask, d.loopState, macro.Trigger{Serial: d.Serial, Key: int(mask)})
 				break
 			case 11:
 				d.rotateDeviceProfile()
@@ -2393,7 +2393,7 @@ func (d *Device) triggerKeyAssignment(value uint32) {
 
 // StartMacroIndicator pulses the zone or key that triggered the macro.
 // It temporarily freezes the active effect and restores it on stop.
-func (d *Device) StartMacroIndicator(triggerKey int, indicator *macro.Indicator) {
+func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Indicator) {
 	if indicator == nil || !indicator.Enabled || d.DeviceProfile == nil {
 		return
 	}

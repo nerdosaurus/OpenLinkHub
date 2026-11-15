@@ -459,7 +459,7 @@ func (d *Device) setKeyColor(rowIndex, keyIndex int, color rgb.Color) {
 }
 
 // StartMacroIndicator pulses the key, row or whole keyboard while a macro runs.
-func (d *Device) StartMacroIndicator(triggerKey int, indicator *macro.Indicator) {
+func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Indicator) {
 	if indicator == nil || !indicator.Enabled || d.DeviceProfile == nil {
 		return
 	}
@@ -504,27 +504,18 @@ func (d *Device) StartMacroIndicator(triggerKey int, indicator *macro.Indicator)
 			}
 		}
 	case strings.HasPrefix(target, "key:"):
+		// Key index within the trigger's row.
 		if keyIndex, err := strconv.Atoi(strings.TrimPrefix(target, "key:")); err == nil {
-			for rowIndex, row := range d.DeviceProfile.Keyboards[d.DeviceProfile.Profile].Row {
-				if _, ok := row.Keys[keyIndex]; ok {
-					addKey(rowIndex, keyIndex)
-				}
-			}
+			addKey(trigger.Row, keyIndex)
 		}
 	case target == "row":
-		for rowIndex, row := range d.DeviceProfile.Keyboards[d.DeviceProfile.Profile].Row {
-			if _, ok := row.Keys[triggerKey]; ok {
-				for keyIndex := range row.Keys {
-					addKey(rowIndex, keyIndex)
-				}
+		if row, ok := d.DeviceProfile.Keyboards[d.DeviceProfile.Profile].Row[trigger.Row]; ok {
+			for keyIndex := range row.Keys {
+				addKey(trigger.Row, keyIndex)
 			}
 		}
 	default:
-		for rowIndex, row := range d.DeviceProfile.Keyboards[d.DeviceProfile.Profile].Row {
-			if _, ok := row.Keys[triggerKey]; ok {
-				addKey(rowIndex, triggerKey)
-			}
-		}
+		addKey(trigger.Row, trigger.Key)
 	}
 	if len(restores) == 0 {
 		return
@@ -2879,7 +2870,7 @@ func (d *Device) triggerKeyAssignment(value []byte, functionKey bool, modifierKe
 				logger.Log(logger.Fields{"serial": d.Serial}).Error("Invalid macro profile")
 				return
 			}
-			macro.Play(d, macroProfile, key.ActionCommand, d.loopState, d.Serial, keyIndex)
+			macro.Play(d, macroProfile, key.ActionCommand, d.loopState, macro.Trigger{Serial: d.Serial, Key: keyIndex, Row: rowIndex})
 			break
 		case 21:
 			d.ChangeDeviceProfile(key.DeviceId)

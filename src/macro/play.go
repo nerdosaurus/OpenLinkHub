@@ -23,11 +23,19 @@ type DeviceHooks interface {
 	NewStopRepeat() <-chan struct{}
 }
 
+// Trigger identifies the device element that started a macro. Row is only
+// meaningful on per-key devices (0 is a valid row; use Key alone for mice).
+type Trigger struct {
+	Serial string
+	Key    int
+	Row    int
+}
+
 // IndicatorHooks is optionally implemented by devices that can show a status
 // animation on the key/zone that triggered the macro. Keeping it separate from
 // DeviceHooks avoids forcing every device to implement it.
 type IndicatorHooks interface {
-	StartMacroIndicator(triggerKey int, indicator *Indicator)
+	StartMacroIndicator(trigger Trigger, indicator *Indicator)
 	StopMacroIndicator()
 }
 
@@ -93,9 +101,9 @@ func waitStop(stop <-chan struct{}, duration time.Duration) bool {
 // A negative profile.Repeat means "loop" (toggle on/off via loopKey); zero or
 // positive means "play N times" (0 plays once).
 //
-// deviceSerial and triggerKey are used for the running-status registry and the
-// optional indicator animation; they do not affect playback.
-func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, deviceSerial string, triggerKey int) {
+// trigger is used for the running-status registry and the optional indicator
+// animation; it does not affect playback.
+func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, trigger Trigger) {
 	if profile == nil {
 		return
 	}
@@ -225,7 +233,7 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, devi
 			return func() {}
 		}
 		if indicatorHooks, ok := hooks.(IndicatorHooks); ok {
-			indicatorHooks.StartMacroIndicator(triggerKey, profile.Indicator)
+			indicatorHooks.StartMacroIndicator(trigger, profile.Indicator)
 			return indicatorHooks.StopMacroIndicator
 		}
 		return func() {}
@@ -233,7 +241,7 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, devi
 
 	if profile.Repeat < 0 {
 		stop, isRunning := loops.Toggle(loopKey)
-		key := runningKey(deviceSerial, profile.Id, triggerKey)
+		key := runningKey(trigger.Serial, profile.Id, trigger.Key)
 		if isRunning {
 			close(stop)
 			UnregisterRunning(key)
@@ -241,7 +249,7 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, devi
 			return
 		}
 
-		RegisterRunning(deviceSerial, profile.Id, profile.Name, triggerKey, func() {
+		RegisterRunning(trigger, profile.Id, profile.Name, func() {
 			loops.Stop(loopKey)
 		})
 
@@ -275,7 +283,7 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, devi
 	}
 
 	stop := make(chan struct{})
-	key := RegisterRunning(deviceSerial, profile.Id, profile.Name, triggerKey, func() {
+	key := RegisterRunning(trigger, profile.Id, profile.Name, func() {
 		close(stop)
 	})
 	defer UnregisterRunning(key)

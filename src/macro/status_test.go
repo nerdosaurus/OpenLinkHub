@@ -4,7 +4,7 @@ import "testing"
 
 func TestRunningRegistry(t *testing.T) {
 	stop := make(chan struct{})
-	key := RegisterRunning("serial-1", 7, "Test macro", 32, func() {
+	key := RegisterRunning(Trigger{Serial: "serial-1", Key: 32, Row: 1}, 7, "Test macro", func() {
 		close(stop)
 	})
 
@@ -12,7 +12,8 @@ func TestRunningRegistry(t *testing.T) {
 	if len(running) != 1 {
 		t.Fatalf("expected 1 running macro, got %d", len(running))
 	}
-	if running[0].MacroId != 7 || running[0].MacroName != "Test macro" {
+	if running[0].MacroId != 7 || running[0].MacroName != "Test macro" ||
+		running[0].TriggerKey != 32 || running[0].TriggerRow != 1 {
 		t.Fatalf("unexpected running entry: %+v", running[0])
 	}
 
