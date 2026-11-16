@@ -61,11 +61,11 @@ func TestIndicatorFactorSpeedFallback(t *testing.T) {
 func TestIndicatorFrameAlternate(t *testing.T) {
 	base := rgb.Color{Red: 255}
 	original := rgb.Color{Green: 255}
-	first := IndicatorFrame(base, original, rgb.Color{}, "alternate", 0, 0, 1)
+	first := IndicatorFrame(base, original, rgb.Color{}, "alternate", 0, 0, false, 1)
 	if first.Green != 255 {
 		t.Fatalf("alternate should start from the original colour, got %+v", first)
 	}
-	second := IndicatorFrame(base, original, rgb.Color{}, "alternate", time.Duration(indicatorCycleSeconds/2*float64(time.Second)), 0, 1)
+	second := IndicatorFrame(base, original, rgb.Color{}, "alternate", time.Duration(indicatorCycleSeconds/2*float64(time.Second)), 0, false, 1)
 	if second.Red != 255 {
 		t.Fatalf("alternate should switch to the indicator colour, got %+v", second)
 	}
@@ -74,7 +74,7 @@ func TestIndicatorFrameAlternate(t *testing.T) {
 func TestIndicatorFrameTwoColour(t *testing.T) {
 	base := rgb.Color{Red: 255}
 	second := rgb.Color{Blue: 255}
-	frame := IndicatorFrame(base, rgb.Color{}, second, "two-colour", time.Duration(indicatorCycleSeconds/8*float64(time.Second)), 0, 1)
+	frame := IndicatorFrame(base, rgb.Color{}, second, "two-colour", time.Duration(indicatorCycleSeconds/8*float64(time.Second)), 0, false, 1)
 	if frame.Red == 0 || frame.Blue == 0 {
 		t.Fatalf("two-colour should blend both colours, got %+v", frame)
 	}
@@ -83,17 +83,31 @@ func TestIndicatorFrameTwoColour(t *testing.T) {
 func TestIndicatorFrameProgress(t *testing.T) {
 	base := rgb.Color{Red: 255}
 	duration := 10 * time.Second
-	start := IndicatorFrame(base, rgb.Color{}, rgb.Color{}, "progress", 0, duration, 1)
-	end := IndicatorFrame(base, rgb.Color{}, rgb.Color{}, "progress", duration, duration, 1)
+	start := IndicatorFrame(base, rgb.Color{}, rgb.Color{}, "progress", 0, duration, false, 1)
+	end := IndicatorFrame(base, rgb.Color{}, rgb.Color{}, "progress", duration, duration, false, 1)
 	if start.Red >= end.Red || end.Red < 250 {
 		t.Fatalf("progress should ramp up: start %.0f end %.0f", start.Red, end.Red)
 	}
 
 	// Without a known duration progress falls back to pulse.
-	fallback := IndicatorFrame(base, rgb.Color{}, rgb.Color{}, "progress", time.Second, 0, 1)
-	pulse := IndicatorFrame(base, rgb.Color{}, rgb.Color{}, "pulse", time.Second, 0, 1)
+	fallback := IndicatorFrame(base, rgb.Color{}, rgb.Color{}, "progress", time.Second, 0, false, 1)
+	pulse := IndicatorFrame(base, rgb.Color{}, rgb.Color{}, "pulse", time.Second, 0, false, 1)
 	if fallback.Red != pulse.Red {
 		t.Fatalf("progress without duration should match pulse: %.0f vs %.0f", fallback.Red, pulse.Red)
+	}
+}
+
+func TestIndicatorFrameProgressLoop(t *testing.T) {
+	base := rgb.Color{Red: 255}
+	duration := 10 * time.Second
+	start := IndicatorFrame(base, rgb.Color{}, rgb.Color{}, "progress", 0, duration, true, 1)
+	mid := IndicatorFrame(base, rgb.Color{}, rgb.Color{}, "progress", 5*time.Second, duration, true, 1)
+	wrapped := IndicatorFrame(base, rgb.Color{}, rgb.Color{}, "progress", 10*time.Second, duration, true, 1)
+	if start.Red != wrapped.Red {
+		t.Fatalf("a loop should restart its ramp each cycle: %.0f vs %.0f", start.Red, wrapped.Red)
+	}
+	if mid.Red <= start.Red || mid.Red >= 255 {
+		t.Fatalf("mid-cycle should be brighter than start and below full: %.0f", mid.Red)
 	}
 }
 
@@ -112,8 +126,8 @@ func TestEstimateDuration(t *testing.T) {
 		t.Fatalf("expected %v, got %v", want, got)
 	}
 
-	loop := &Macro{Repeat: -1, Actions: profile.Actions}
-	if got := EstimateDuration(loop); got != 0 {
-		t.Fatalf("loops have no progress duration, got %v", got)
+	loop := &Macro{Repeat: -1, RepeatDelay: 500, Actions: profile.Actions}
+	if got := EstimateDuration(loop); got != 1500*time.Millisecond {
+		t.Fatalf("a loop cycle should be 1.5s, got %v", got)
 	}
 }

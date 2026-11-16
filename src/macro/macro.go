@@ -38,9 +38,10 @@ type Indicator struct {
 	Target  string    `json:"target"`
 	// Echo optionally lights a second zone faintly, e.g. "zone:Logo" or "".
 	Echo string `json:"echo,omitempty"`
-	// DurationMs is filled in by Play for one-shot progress effects and is not
-	// persisted (loops leave it at zero).
+	// DurationMs and Loop are filled in by Play for the progress effect and are
+	// not persisted. Loops use one cycle (pass + repeat delay) per ramp.
 	DurationMs int64 `json:"-"`
+	Loop       bool  `json:"-"`
 }
 
 type Actions struct {

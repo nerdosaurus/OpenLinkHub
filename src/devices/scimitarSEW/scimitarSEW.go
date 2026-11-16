@@ -2679,6 +2679,7 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 	base := macro.IndicatorRGB(indicator.Color)
 	secondary := macro.IndicatorRGB2(indicator.Color2)
 	duration := time.Duration(indicator.DurationMs) * time.Millisecond
+	loop := indicator.Loop
 	logger.Log(logger.Fields{"serial": d.Serial, "zone": zone.Name, "echo": len(echoZones), "effect": effect, "speed": speed}).Info("Macro indicator started")
 
 	go func() {
@@ -2703,7 +2704,7 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 				logger.Log(logger.Fields{"serial": d.Serial, "zone": zone.Name}).Info("Macro indicator stopped")
 				return
 			case <-ticker.C:
-				color := macro.IndicatorFrame(base, original, secondary, effect, time.Since(start), duration, speed)
+				color := macro.IndicatorFrame(base, original, secondary, effect, time.Since(start), duration, loop, speed)
 				pulsedZone := d.DeviceProfile.ZoneColors[zoneIndex]
 				pulsedZone.Color = &color
 				d.DeviceProfile.ZoneColors[zoneIndex] = pulsedZone

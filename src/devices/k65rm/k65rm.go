@@ -585,6 +585,7 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 	base := macro.IndicatorRGB(indicator.Color)
 	secondary := macro.IndicatorRGB2(indicator.Color2)
 	duration := time.Duration(indicator.DurationMs) * time.Millisecond
+	loop := indicator.Loop
 	logger.Log(logger.Fields{"serial": d.Serial, "target": indicator.Target, "keys": len(restores), "echo": len(echoes), "speed": speed}).Info("Macro indicator started")
 
 	go func() {
@@ -608,11 +609,11 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 			case <-ticker.C:
 				elapsed := time.Since(start)
 				for _, item := range restores {
-					color := macro.IndicatorFrame(base, item.color, secondary, effect, elapsed, duration, speed)
+					color := macro.IndicatorFrame(base, item.color, secondary, effect, elapsed, duration, loop, speed)
 					d.setKeyColor(item.rowIndex, item.keyIndex, color)
 				}
 				for _, item := range echoes {
-					color := macro.IndicatorFrame(base, item.color, secondary, effect, elapsed, duration, speed)
+					color := macro.IndicatorFrame(base, item.color, secondary, effect, elapsed, duration, loop, speed)
 					d.setKeyColor(item.rowIndex, item.keyIndex, macro.Dim(color, 0.35))
 				}
 				d.setDeviceColor()

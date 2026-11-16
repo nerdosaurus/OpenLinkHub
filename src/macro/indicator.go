@@ -106,6 +106,7 @@ func IndicatorFrame(
 	effect string,
 	elapsed time.Duration,
 	duration time.Duration,
+	loop bool,
 	speed float64,
 ) rgb.Color {
 	if speed <= 0 {
@@ -129,7 +130,11 @@ func IndicatorFrame(
 		return mixed
 	case "progress":
 		if duration > 0 {
-			progress := math.Min(1, math.Max(0, elapsed.Seconds()/duration.Seconds()))
+			progress := elapsed.Seconds() / duration.Seconds()
+			if loop {
+				progress = math.Mod(progress, 1)
+			}
+			progress = math.Min(1, math.Max(0, progress))
 			factor := 0.15 + 0.85*progress
 			return scaled(base, factor)
 		}
@@ -139,11 +144,12 @@ func IndicatorFrame(
 	}
 }
 
-// EstimateDuration approximates the play time of a one-shot macro. It is only
-// used to drive the progress indicator, so tap/repeat timings are rough and
-// held actions are ignored (their length is unknown).
+// EstimateDuration approximates a macro's play time for the progress effect.
+// For a loop it returns one cycle (one pass plus the repeat delay); for a
+// one-shot it returns the whole run. Tap/repeat timings are rough and held
+// actions are ignored (their length is unknown).
 func EstimateDuration(profile *Macro) time.Duration {
-	if profile == nil || profile.Repeat < 0 {
+	if profile == nil {
 		return 0
 	}
 	repeats := profile.Repeat
@@ -170,6 +176,10 @@ func EstimateDuration(profile *Macro) time.Duration {
 				per += time.Duration(action.ActionRepeat-1) * time.Duration(action.ActionRepeatDelay) * time.Millisecond
 			}
 		}
+	}
+	cycle := per + time.Duration(profile.RepeatDelay)*time.Millisecond
+	if profile.Repeat < 0 {
+		return cycle
 	}
 	total := time.Duration(repeats)*per + time.Duration(repeats-1)*time.Duration(profile.RepeatDelay)*time.Millisecond
 	return total

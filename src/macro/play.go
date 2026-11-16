@@ -234,7 +234,8 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, trig
 		}
 		if indicatorHooks, ok := hooks.(IndicatorHooks); ok {
 			indicator := *profile.Indicator
-			if indicator.DurationMs == 0 && profile.Repeat >= 0 {
+			indicator.Loop = profile.Repeat < 0
+			if indicator.DurationMs == 0 {
 				if duration := EstimateDuration(profile); duration > 0 {
 					indicator.DurationMs = duration.Milliseconds()
 				}
