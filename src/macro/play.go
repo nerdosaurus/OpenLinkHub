@@ -280,12 +280,12 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, trig
 					return
 				default:
 				}
+				if cycleHooks, ok := hooks.(IndicatorCycleHooks); ok {
+					cycleHooks.RestartMacroIndicatorCycle()
+				}
 				if !runMacro(firstRun, stop) {
 					cleanup()
 					return
-				}
-				if cycleHooks, ok := hooks.(IndicatorCycleHooks); ok {
-					cycleHooks.RestartMacroIndicatorCycle()
 				}
 				firstRun = false
 				if profile.RepeatDelay > 0 {
