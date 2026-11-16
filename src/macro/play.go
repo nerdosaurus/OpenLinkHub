@@ -39,6 +39,13 @@ type IndicatorHooks interface {
 	StopMacroIndicator()
 }
 
+// IndicatorCycleHooks is optionally implemented by devices whose indicator has
+// time-based effects (progress). Play calls it at the start of every loop pass
+// so the animation is resynchronised with the real cycle instead of an estimate.
+type IndicatorCycleHooks interface {
+	RestartMacroIndicatorCycle()
+}
+
 // LoopState tracks running macro loops, keyed by an arbitrary comparable value
 // (e.g. a button bitmask or macro id). Each device owns its own LoopState so
 // loops never collide across devices.
@@ -276,6 +283,9 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, trig
 				if !runMacro(firstRun, stop) {
 					cleanup()
 					return
+				}
+				if cycleHooks, ok := hooks.(IndicatorCycleHooks); ok {
+					cycleHooks.RestartMacroIndicatorCycle()
 				}
 				firstRun = false
 				if profile.RepeatDelay > 0 {

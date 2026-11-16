@@ -134,6 +134,7 @@ type Device struct {
 	stopRepeatMutex       sync.Mutex
 	indicatorStop         chan struct{}
 	indicatorDone         chan struct{}
+	indicatorReset        chan struct{}
 	indicatorMutex        sync.Mutex
 }
 
@@ -2469,9 +2470,11 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 
 	stop := make(chan struct{})
 	done := make(chan struct{})
+	reset := make(chan struct{}, 1)
 	d.indicatorMutex.Lock()
 	d.indicatorStop = stop
 	d.indicatorDone = done
+	d.indicatorReset = reset
 	d.indicatorMutex.Unlock()
 
 	effect := strings.ToLower(indicator.Effect)
@@ -2483,7 +2486,7 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 	secondary := macro.IndicatorRGB2(indicator.Color2)
 	duration := time.Duration(indicator.DurationMs) * time.Millisecond
 	loop := indicator.Loop
-	logger.Log(logger.Fields{"serial": d.Serial, "zone": zone.Name, "echo": len(echoZones), "effect": effect, "speed": speed}).Info("Macro indicator started")
+	logger.Log(logger.Fields{"serial": d.Serial, "zone": zone.Name, "echo": len(echoZones), "effect": effect, "speed": speed, "loop": loop, "durationMs": duration.Milliseconds()}).Info("Macro indicator started")
 
 	go func() {
 		defer close(done)
@@ -2506,6 +2509,8 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 				d.setDeviceColor()
 				logger.Log(logger.Fields{"serial": d.Serial, "zone": zone.Name}).Info("Macro indicator stopped")
 				return
+			case <-reset:
+				start = time.Now()
 			case <-ticker.C:
 				color := macro.IndicatorFrame(base, original, secondary, effect, time.Since(start), duration, loop, speed)
 				pulsedZone := d.DeviceProfile.ZoneColors[zoneIndex]
@@ -2523,6 +2528,21 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 	}()
 }
 
+// RestartMacroIndicatorCycle resynchronises time-based effects with a new loop
+// pass, so a progress ramp restarts on every cycle.
+func (d *Device) RestartMacroIndicatorCycle() {
+	d.indicatorMutex.Lock()
+	reset := d.indicatorReset
+	d.indicatorMutex.Unlock()
+	if reset == nil {
+		return
+	}
+	select {
+	case reset <- struct{}{}:
+	default:
+	}
+}
+
 // StopMacroIndicator stops the status animation and restores the profile.
 func (d *Device) StopMacroIndicator() {
 	d.indicatorMutex.Lock()
@@ -2530,6 +2550,7 @@ func (d *Device) StopMacroIndicator() {
 	done := d.indicatorDone
 	d.indicatorStop = nil
 	d.indicatorDone = nil
+	d.indicatorReset = nil
 	d.indicatorMutex.Unlock()
 	if stop == nil {
 		return
