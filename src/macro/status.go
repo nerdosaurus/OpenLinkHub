@@ -15,9 +15,11 @@ import (
 type Running struct {
 	MacroId      int    `json:"macroId"`
 	MacroName    string `json:"macroName"`
+	Repeat       int    `json:"repeat"`
 	DeviceSerial string `json:"deviceSerial"`
 	TriggerKey   int    `json:"triggerKey"`
 	TriggerRow   int    `json:"triggerRow"`
+	Cycle        int    `json:"cycle"`     // loop passes completed
 	StartedAt    int64  `json:"startedAt"` // Unix milliseconds
 	Started      string `json:"started"`   // RFC3339, for humans
 	stop         func()
@@ -33,13 +35,14 @@ func runningKey(serial string, macroId, triggerKey int) string {
 }
 
 // RegisterRunning records a started macro and returns its registry key.
-func RegisterRunning(trigger Trigger, macroId int, name string, stop func()) string {
-	key := runningKey(trigger.Serial, macroId, trigger.Key)
+func RegisterRunning(trigger Trigger, profile *Macro, stop func()) string {
+	key := runningKey(trigger.Serial, profile.Id, trigger.Key)
 	now := time.Now()
 	runningMutex.Lock()
 	running[key] = &Running{
-		MacroId:      macroId,
-		MacroName:    name,
+		MacroId:      profile.Id,
+		MacroName:    profile.Name,
+		Repeat:       profile.Repeat,
 		DeviceSerial: trigger.Serial,
 		TriggerKey:   trigger.Key,
 		TriggerRow:   trigger.Row,
@@ -49,6 +52,15 @@ func RegisterRunning(trigger Trigger, macroId int, name string, stop func()) str
 	}
 	runningMutex.Unlock()
 	return key
+}
+
+// BumpRunningCycle records one completed loop pass for the running macro.
+func BumpRunningCycle(key string) {
+	runningMutex.Lock()
+	if item, ok := running[key]; ok {
+		item.Cycle++
+	}
+	runningMutex.Unlock()
 }
 
 // UnregisterRunning removes a finished macro.

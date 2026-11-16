@@ -263,7 +263,7 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, trig
 			return
 		}
 
-		RegisterRunning(trigger, profile.Id, profile.Name, func() {
+		RegisterRunning(trigger, profile, func() {
 			loops.Stop(loopKey)
 		})
 
@@ -283,6 +283,7 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, trig
 				if cycleHooks, ok := hooks.(IndicatorCycleHooks); ok {
 					cycleHooks.RestartMacroIndicatorCycle()
 				}
+				BumpRunningCycle(key)
 				if !runMacro(firstRun, stop) {
 					cleanup()
 					return
@@ -300,7 +301,7 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, trig
 	}
 
 	stop := make(chan struct{})
-	key := RegisterRunning(trigger, profile.Id, profile.Name, func() {
+	key := RegisterRunning(trigger, profile, func() {
 		close(stop)
 	})
 	defer UnregisterRunning(key)
