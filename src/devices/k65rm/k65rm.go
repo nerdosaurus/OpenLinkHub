@@ -527,6 +527,42 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 		return
 	}
 
+	// Optional faint echo: the trigger row or the whole keyboard.
+	echoes := make([]restoreKey, 0)
+	echo := strings.ToLower(strings.TrimSpace(indicator.Echo))
+	if echo == "all" || echo == "zone:all" || echo == "row" {
+		addEcho := func(rowIndex, keyIndex int) {
+			key, ok := d.keyAt(rowIndex, keyIndex)
+			if !ok {
+				return
+			}
+			for _, existing := range restores {
+				if existing.rowIndex == rowIndex && existing.keyIndex == keyIndex {
+					return
+				}
+			}
+			for _, existing := range echoes {
+				if existing.rowIndex == rowIndex && existing.keyIndex == keyIndex {
+					return
+				}
+			}
+			echoes = append(echoes, restoreKey{rowIndex, keyIndex, key.Color})
+		}
+		if echo == "row" {
+			if row, ok := d.DeviceProfile.Keyboards[d.DeviceProfile.Profile].Row[trigger.Row]; ok {
+				for keyIndex := range row.Keys {
+					addEcho(trigger.Row, keyIndex)
+				}
+			}
+		} else {
+			for rowIndex, row := range d.DeviceProfile.Keyboards[d.DeviceProfile.Profile].Row {
+				for keyIndex := range row.Keys {
+					addEcho(rowIndex, keyIndex)
+				}
+			}
+		}
+	}
+
 	originalProfile := d.DeviceProfile.RGBProfile
 	if d.activeRgb != nil {
 		d.activeRgb.Exit <- true
@@ -547,7 +583,9 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 		speed = 1
 	}
 	base := macro.IndicatorRGB(indicator.Color)
-	logger.Log(logger.Fields{"serial": d.Serial, "target": indicator.Target, "keys": len(restores), "speed": speed}).Info("Macro indicator started")
+	secondary := macro.IndicatorRGB2(indicator.Color2)
+	duration := time.Duration(indicator.DurationMs) * time.Millisecond
+	logger.Log(logger.Fields{"serial": d.Serial, "target": indicator.Target, "keys": len(restores), "echo": len(echoes), "speed": speed}).Info("Macro indicator started")
 
 	go func() {
 		defer close(done)
@@ -560,14 +598,22 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 				for _, item := range restores {
 					d.setKeyColor(item.rowIndex, item.keyIndex, item.color)
 				}
+				for _, item := range echoes {
+					d.setKeyColor(item.rowIndex, item.keyIndex, item.color)
+				}
 				d.DeviceProfile.RGBProfile = originalProfile
 				d.setDeviceColor()
 				logger.Log(logger.Fields{"serial": d.Serial, "keys": len(restores)}).Info("Macro indicator stopped")
 				return
 			case <-ticker.C:
-				color := macro.IndicatorColor(base, effect, time.Since(start), speed)
+				elapsed := time.Since(start)
 				for _, item := range restores {
+					color := macro.IndicatorFrame(base, item.color, secondary, effect, elapsed, duration, speed)
 					d.setKeyColor(item.rowIndex, item.keyIndex, color)
+				}
+				for _, item := range echoes {
+					color := macro.IndicatorFrame(base, item.color, secondary, effect, elapsed, duration, speed)
+					d.setKeyColor(item.rowIndex, item.keyIndex, macro.Dim(color, 0.35))
 				}
 				d.setDeviceColor()
 			}

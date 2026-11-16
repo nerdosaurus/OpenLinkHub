@@ -2645,6 +2645,17 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 
 	zone := d.DeviceProfile.ZoneColors[zoneIndex]
 	original := *zone.Color
+	echoZones := make([]int, 0)
+	echoOriginals := make(map[int]rgb.Color)
+	if echoName := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(indicator.Echo)), "zone:"); echoName != "" {
+		for key, candidate := range d.DeviceProfile.ZoneColors {
+			if key == zoneIndex || candidate.Color == nil || !strings.EqualFold(candidate.Name, echoName) {
+				continue
+			}
+			echoZones = append(echoZones, key)
+			echoOriginals[key] = *candidate.Color
+		}
+	}
 	originalProfile := d.DeviceProfile.RGBProfile
 
 	if d.activeRgb != nil {
@@ -2666,7 +2677,9 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 		speed = 1
 	}
 	base := macro.IndicatorRGB(indicator.Color)
-	logger.Log(logger.Fields{"serial": d.Serial, "zone": zone.Name, "effect": effect, "speed": speed}).Info("Macro indicator started")
+	secondary := macro.IndicatorRGB2(indicator.Color2)
+	duration := time.Duration(indicator.DurationMs) * time.Millisecond
+	logger.Log(logger.Fields{"serial": d.Serial, "zone": zone.Name, "echo": len(echoZones), "effect": effect, "speed": speed}).Info("Macro indicator started")
 
 	go func() {
 		defer close(done)
@@ -2679,15 +2692,27 @@ func (d *Device) StartMacroIndicator(trigger macro.Trigger, indicator *macro.Ind
 				restoreZone := d.DeviceProfile.ZoneColors[zoneIndex]
 				restoreZone.Color = &original
 				d.DeviceProfile.ZoneColors[zoneIndex] = restoreZone
+				for _, key := range echoZones {
+					restore := d.DeviceProfile.ZoneColors[key]
+					color := echoOriginals[key]
+					restore.Color = &color
+					d.DeviceProfile.ZoneColors[key] = restore
+				}
 				d.DeviceProfile.RGBProfile = originalProfile
 				d.setDeviceColor()
 				logger.Log(logger.Fields{"serial": d.Serial, "zone": zone.Name}).Info("Macro indicator stopped")
 				return
 			case <-ticker.C:
-				color := macro.IndicatorColor(base, effect, time.Since(start), speed)
+				color := macro.IndicatorFrame(base, original, secondary, effect, time.Since(start), duration, speed)
 				pulsedZone := d.DeviceProfile.ZoneColors[zoneIndex]
 				pulsedZone.Color = &color
 				d.DeviceProfile.ZoneColors[zoneIndex] = pulsedZone
+				for _, key := range echoZones {
+					echoZone := d.DeviceProfile.ZoneColors[key]
+					echoColor := macro.Dim(color, 0.35)
+					echoZone.Color = &echoColor
+					d.DeviceProfile.ZoneColors[key] = echoZone
+				}
 				d.setDeviceColor()
 			}
 		}

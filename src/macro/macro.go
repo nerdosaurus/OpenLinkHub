@@ -33,8 +33,14 @@ type Indicator struct {
 	Enabled bool      `json:"enabled"`
 	Effect  string    `json:"effect"`
 	Color   rgb.Color `json:"color"`
+	Color2  rgb.Color `json:"color2"`
 	Speed   float64   `json:"speed"`
 	Target  string    `json:"target"`
+	// Echo optionally lights a second zone faintly, e.g. "zone:Logo" or "".
+	Echo string `json:"echo,omitempty"`
+	// DurationMs is filled in by Play for one-shot progress effects and is not
+	// persisted (loops leave it at zero).
+	DurationMs int64 `json:"-"`
 }
 
 type Actions struct {

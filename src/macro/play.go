@@ -233,7 +233,13 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, trig
 			return func() {}
 		}
 		if indicatorHooks, ok := hooks.(IndicatorHooks); ok {
-			indicatorHooks.StartMacroIndicator(trigger, profile.Indicator)
+			indicator := *profile.Indicator
+			if indicator.DurationMs == 0 && profile.Repeat >= 0 {
+				if duration := EstimateDuration(profile); duration > 0 {
+					indicator.DurationMs = duration.Milliseconds()
+				}
+			}
+			indicatorHooks.StartMacroIndicator(trigger, &indicator)
 			return indicatorHooks.StopMacroIndicator
 		}
 		return func() {}
