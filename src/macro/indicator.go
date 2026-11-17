@@ -135,7 +135,9 @@ func IndicatorFrame(
 				progress = math.Mod(progress, 1)
 			}
 			progress = math.Min(1, math.Max(0, progress))
-			factor := 0.15 + 0.85*progress
+			// Perceptual curve: a linear ramp on a red LED looks saturated well
+			// before the end, which reads as "stuck at 100%".
+			factor := 0.03 + 0.97*math.Pow(progress, 2.4)
 			return scaled(base, factor)
 		}
 		fallthrough

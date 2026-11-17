@@ -2539,6 +2539,7 @@ func (d *Device) RestartMacroIndicatorCycle() {
 	}
 	select {
 	case reset <- struct{}{}:
+		logger.Log(logger.Fields{"serial": d.Serial}).Info("Macro indicator cycle restarted")
 	default:
 	}
 }
