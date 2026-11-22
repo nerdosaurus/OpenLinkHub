@@ -105,6 +105,11 @@ $(document).ready(function () {
                     }
                     macroSettingsDelay.val(repeatDelay);
 
+                    const macroSettingsTextDelay = $("#macroSettingsTextDelay");
+                    const macroSettingsTextDelayVariance = $("#macroSettingsTextDelayVariance");
+                    macroSettingsTextDelay.val(data.textDelayMs || "");
+                    macroSettingsTextDelayVariance.val(data.textDelayVarianceMs || "");
+
                     macroSettingsLoop.on("change", function () {
                         const $toggle = $(this);
                         const newState = $toggle.prop("checked");
@@ -139,6 +144,20 @@ $(document).ready(function () {
                             return false;
                         }
                         pf["macroRepeatDelay"] = macroDelay;
+
+                        const textDelay = parseInt(macroSettingsTextDelay.val() || 0);
+                        if (isNaN(textDelay) || (textDelay !== 0 && (textDelay < 10 || textDelay > 1000))) {
+                            toast.warning(i18n.t('txtInvalidTextDelay'));
+                            return false;
+                        }
+                        pf["macroTextDelay"] = textDelay;
+
+                        const textVariance = parseInt(macroSettingsTextDelayVariance.val() || 0);
+                        if (isNaN(textVariance) || textVariance < 0 || textVariance > 500) {
+                            toast.warning(i18n.t('txtInvalidTextDelayVariance'));
+                            return false;
+                        }
+                        pf["macroTextDelayVariance"] = textVariance;
 
                         const json = JSON.stringify(pf, null, 2);
                         $.ajax({

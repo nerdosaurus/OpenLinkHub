@@ -18,12 +18,17 @@ import (
 )
 
 type Macro struct {
-	Id          int             `json:"id"`
-	Name        string          `json:"name"`
-	Repeat      int             `json:"repeat"`
-	RepeatDelay int             `json:"repeatDelay"`
-	Actions     map[int]Actions `json:"actions"`
-	Indicator   *Indicator      `json:"indicator,omitempty"`
+	Id          int    `json:"id"`
+	Name        string `json:"name"`
+	Repeat      int    `json:"repeat"`
+	RepeatDelay int    `json:"repeatDelay"`
+	// TextDelayMs and TextDelayVarianceMs override the global typing rhythm for
+	// this macro. Zero keeps the global default, so existing macros need no
+	// migration.
+	TextDelayMs         int             `json:"textDelayMs,omitempty"`
+	TextDelayVarianceMs int             `json:"textDelayVarianceMs,omitempty"`
+	Actions             map[int]Actions `json:"actions"`
+	Indicator           *Indicator      `json:"indicator,omitempty"`
 }
 
 // Indicator configures the optional status animation shown while a macro is
@@ -218,13 +223,15 @@ func UpdateMacroIndicator(macroId int, indicator *Indicator) uint8 {
 }
 
 // UpdateMacroSettings will update macro value
-func UpdateMacroSettings(macroId, macroRepeat, macroDelay int) uint8 {
+func UpdateMacroSettings(macroId, macroRepeat, macroDelay, textDelay, textVariance int) uint8 {
 	mutex.Lock()
 	defer mutex.Unlock()
 	if val, ok := macros[macroId]; ok {
 		profile := fmt.Sprintf("%s/database/macros/%s.json", config.GetConfig().ConfigPath, strings.ToLower(val.Name))
 		val.Repeat = macroRepeat
 		val.RepeatDelay = macroDelay
+		val.TextDelayMs = textDelay
+		val.TextDelayVarianceMs = textVariance
 		macros[macroId] = val
 		SaveProfile(profile, val)
 		return 1

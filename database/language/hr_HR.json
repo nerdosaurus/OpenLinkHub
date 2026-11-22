@@ -817,6 +817,7 @@
     "txtInvalidTextDelay": "Nevažeća vrijednost kašnjenja teksta. Raspon je 10-1000 ms.",
     "txtInvalidTextDelayVariance": "Nevažeća vrijednost odstupanja kašnjenja teksta. Raspon je 0-500 ms.",
     "txtInvalidDelayVariance": "Nevažeća vrijednost odstupanja kašnjenja. Raspon je 0-500 ms.",
-    "txtTextDelayUpdated": "Kašnjenje teksta uspješno je ažurirano"
+    "txtTextDelayUpdated": "Kašnjenje teksta uspješno je ažurirano",
+    "txtTextDelayVariance": "Odstupanje tipkanja"
   }
 }

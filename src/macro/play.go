@@ -188,7 +188,7 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, trig
 							return false
 						default:
 						}
-						inputmanager.InputControlKeyboardText(v.ActionText)
+						inputmanager.InputControlKeyboardTextWithDelay(v.ActionText, profile.TextDelayMs, profile.TextDelayVarianceMs)
 						if v.ActionRepeatDelay > 0 && v.ActionRepeat > 1 {
 							if !waitStop(stop, time.Duration(v.ActionRepeatDelay)*time.Millisecond) {
 								return false
@@ -196,7 +196,7 @@ func Play(hooks DeviceHooks, profile *Macro, loopKey any, loops *LoopState, trig
 						}
 					}
 				} else {
-					inputmanager.InputControlKeyboardText(v.ActionText)
+					inputmanager.InputControlKeyboardTextWithDelay(v.ActionText, profile.TextDelayMs, profile.TextDelayVarianceMs)
 				}
 			case 20: // mouse position
 				if v.ActionRepeat > 0 && !v.ActionHold {

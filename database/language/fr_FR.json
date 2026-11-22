@@ -817,6 +817,7 @@
         "txtInvalidTextDelay": "Valeur de délai de texte invalide. La plage est de 10 à 1000 ms.",
         "txtInvalidTextDelayVariance": "Valeur de variance du délai de texte invalide. La plage est de 0 à 500 ms.",
         "txtInvalidDelayVariance": "Valeur de variance du délai invalide. La plage est de 0 à 500 ms.",
-        "txtTextDelayUpdated": "Délai de texte mis à jour avec succès"
+        "txtTextDelayUpdated": "Délai de texte mis à jour avec succès",
+        "txtTextDelayVariance": "Variation de frappe"
     }
 }

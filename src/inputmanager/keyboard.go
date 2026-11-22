@@ -258,8 +258,14 @@ func InputControlScrollHorizontalReset() {
 	}
 }
 
-// InputControlKeyboardText will send given text string to keyboard
+// InputControlKeyboardText will send the text using the global typing rhythm.
 func InputControlKeyboardText(text string) {
+	InputControlKeyboardTextWithDelay(text, 0, 0)
+}
+
+// InputControlKeyboardTextWithDelay types text with a per-macro delay and
+// optional jitter. Zero values fall back to the configured global defaults.
+func InputControlKeyboardTextWithDelay(text string, delayMs, varianceMs int) {
 	if virtualKeyboardFile == nil {
 		logger.Log(logger.Fields{}).Error("Virtual keyboard is not present")
 		return
@@ -336,11 +342,27 @@ func InputControlKeyboardText(text string) {
 
 		// Configurable typing rhythm (textDelayMs) with optional random jitter
 		// (textDelayVarianceMs).
-		delayMs := config.GetConfig().TextDelayMs
-		if variance := config.GetConfig().TextDelayVarianceMs; variance > 0 {
-			delayMs += rand.Intn(variance + 1)
+		delay := delayMs
+		if delay <= 0 {
+			delay = config.GetConfig().TextDelayMs
 		}
-		time.Sleep(time.Duration(delayMs) * time.Millisecond)
+		if delay <= 0 {
+			delay = 40
+		}
+		variance := varianceMs
+		if variance <= 0 {
+			variance = config.GetConfig().TextDelayVarianceMs
+		}
+		if variance < 0 {
+			variance = 0
+		}
+		if variance > 500 {
+			variance = 500
+		}
+		if variance > 0 {
+			delay += rand.Intn(variance + 1)
+		}
+		time.Sleep(time.Duration(delay) * time.Millisecond)
 	}
 }
 
