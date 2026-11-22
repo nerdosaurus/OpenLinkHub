@@ -54,7 +54,22 @@ func TestMain(m *testing.M) {
 // compositor.
 const eviocGrab = 0x40044590
 
-func findVirtualKeyboardNode(t *testing.T) string {
+// snapshotKeyboardEvents returns the event devices that already exist. The
+// daemon may be running and own a virtual keyboard with the same name, so the
+// test must measure the device it just created, not the daemon's.
+func snapshotKeyboardEvents() map[string]bool {
+	existing := map[string]bool{}
+	names, _ := filepath.Glob("/sys/class/input/event*/device/name")
+	for _, namePath := range names {
+		raw, err := os.ReadFile(namePath)
+		if err == nil && strings.TrimSpace(string(raw)) == "OpenLinkHub Virtual Keyboard" {
+			existing[filepath.Dir(filepath.Dir(namePath))] = true
+		}
+	}
+	return existing
+}
+
+func findVirtualKeyboardNode(t *testing.T, before map[string]bool) string {
 	t.Helper()
 	names, _ := filepath.Glob("/sys/class/input/event*/device/name")
 	for _, namePath := range names {
@@ -63,6 +78,9 @@ func findVirtualKeyboardNode(t *testing.T) string {
 			continue
 		}
 		eventDir := filepath.Dir(filepath.Dir(namePath))
+		if before[eventDir] {
+			continue
+		}
 		devRaw, err := os.ReadFile(filepath.Join(eventDir, "dev"))
 		if err != nil {
 			t.Fatal(err)
@@ -176,6 +194,7 @@ type intervals struct {
 
 func runTyping(t *testing.T, delay, variance, chars int) intervals {
 	t.Helper()
+	before := snapshotKeyboardEvents()
 	if err := createVirtualKeyboard(vendorId, productId); err != nil {
 		t.Fatalf("create virtual keyboard: %v", err)
 	}
@@ -184,7 +203,7 @@ func runTyping(t *testing.T, delay, variance, chars int) intervals {
 	var node string
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		node = findVirtualKeyboardNode(t)
+		node = findVirtualKeyboardNode(t, before)
 		if node != "" {
 			break
 		}
