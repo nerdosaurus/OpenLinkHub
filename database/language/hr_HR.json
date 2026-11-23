@@ -818,6 +818,13 @@
     "txtInvalidTextDelayVariance": "Nevažeća vrijednost odstupanja kašnjenja teksta. Raspon je 0-500 ms.",
     "txtInvalidDelayVariance": "Nevažeća vrijednost odstupanja kašnjenja. Raspon je 0-500 ms.",
     "txtTextDelayUpdated": "Kašnjenje teksta uspješno je ažurirano",
-    "txtTextDelayVariance": "Odstupanje tipkanja"
+    "txtTextDelayVariance": "Odstupanje tipkanja",
+    "txtTypingDelay": "Kašnjenje tipkanja",
+    "txtTypingJitter": "Varijacija kašnjenja tipkanja",
+    "txtJitterInMilliseconds": "Varijacija (u milisekundama)",
+    "txtInvalidTypingDelay": "Nevažeća vrijednost kašnjenja. Vrijednost mora biti između 10 i 1000.",
+    "txtInvalidJitterDelay": "Nevažeća vrijednost varijacije. Vrijednost mora biti između 1 i 500. Koristite 0 za isključivanje varijacije.",
+    "txtTypingDelayInfo": "Kašnjenje tipkanja je vrijednost u milisekundama koja određuje razmak između unosa svakog znaka u tekstualnom nizu. Ova vrijednost koristi se samo za makronaredbe tipa Tekst.",
+    "txtTypingJitterInfo": "Varijacija kašnjenja tipkanja je vrijednost u milisekundama koja određuje nasumičnu varijaciju koja se dodaje postojećem kašnjenju tipkanja. Ova vrijednost koristi se samo za makronaredbe tipa Tekst."
   }
 }

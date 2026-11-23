@@ -18,17 +18,12 @@ import (
 )
 
 type Macro struct {
-	Id          int    `json:"id"`
-	Name        string `json:"name"`
-	Repeat      int    `json:"repeat"`
-	RepeatDelay int    `json:"repeatDelay"`
-	// TextDelayMs and TextDelayVarianceMs override the global typing rhythm for
-	// this macro. Zero keeps the global default, so existing macros need no
-	// migration.
-	TextDelayMs         int             `json:"textDelayMs,omitempty"`
-	TextDelayVarianceMs int             `json:"textDelayVarianceMs,omitempty"`
-	Actions             map[int]Actions `json:"actions"`
-	Indicator           *Indicator      `json:"indicator,omitempty"`
+	Id          int             `json:"id"`
+	Name        string          `json:"name"`
+	Repeat      int             `json:"repeat"`
+	RepeatDelay int             `json:"repeatDelay"`
+	Actions     map[int]Actions `json:"actions"`
+	Indicator   *Indicator      `json:"indicator,omitempty"`
 }
 
 // Indicator configures the optional status animation shown while a macro is
@@ -60,6 +55,8 @@ type Actions struct {
 	MousePositionX        int    `json:"mousePositionX"`
 	MousePositionY        int    `json:"mousePositionY"`
 	MousePositionAbsolute bool   `json:"mousePositionAbsolute"`
+	TextDelayMs           int    `json:"textDelayMs"`
+	TextDelayJitterMs     int    `json:"textDelayJitterMs"`
 }
 
 type Tracker struct {
@@ -110,6 +107,13 @@ func Init() {
 		if err = reader.Decode(&profile); err != nil {
 			logger.Log(logger.Fields{"error": err, "location": profileLocation}).Error("Unable to decode macro profile")
 			continue
+		}
+		// Failsafe for profiles created before per-action typing settings.
+		for key, action := range profile.Actions {
+			if action.TextDelayMs < 10 {
+				action.TextDelayMs = 40
+			}
+			profile.Actions[key] = action
 		}
 		macros[profile.Id] = profile
 	}
@@ -193,12 +197,21 @@ func UpdateMacroValue(macroId, macroIndex int, macroAction *Actions) uint8 {
 					return 2
 				}
 			}
+			if macroAction.TextDelayMs < 10 || macroAction.TextDelayMs > 1000 {
+				macroAction.TextDelayMs = 40
+			}
+			if macroAction.TextDelayJitterMs < 0 || macroAction.TextDelayJitterMs > 500 {
+				macroAction.TextDelayJitterMs = 0
+			}
+
 			action.ActionHold = macroAction.ActionHold
 			action.ActionRepeat = macroAction.ActionRepeat
 			action.ActionRepeatDelay = macroAction.ActionRepeatDelay
 			action.MousePositionX = macroAction.MousePositionX
 			action.MousePositionY = macroAction.MousePositionY
 			action.MousePositionAbsolute = macroAction.MousePositionAbsolute
+			action.TextDelayMs = macroAction.TextDelayMs
+			action.TextDelayJitterMs = macroAction.TextDelayJitterMs
 			val.Actions[macroIndex] = action
 			macros[macroId] = val
 			SaveProfile(profile, val)
@@ -223,15 +236,13 @@ func UpdateMacroIndicator(macroId int, indicator *Indicator) uint8 {
 }
 
 // UpdateMacroSettings will update macro value
-func UpdateMacroSettings(macroId, macroRepeat, macroDelay, textDelay, textVariance int) uint8 {
+func UpdateMacroSettings(macroId, macroRepeat, macroDelay int) uint8 {
 	mutex.Lock()
 	defer mutex.Unlock()
 	if val, ok := macros[macroId]; ok {
 		profile := fmt.Sprintf("%s/database/macros/%s.json", config.GetConfig().ConfigPath, strings.ToLower(val.Name))
 		val.Repeat = macroRepeat
 		val.RepeatDelay = macroDelay
-		val.TextDelayMs = textDelay
-		val.TextDelayVarianceMs = textVariance
 		macros[macroId] = val
 		SaveProfile(profile, val)
 		return 1
@@ -307,6 +318,8 @@ func NewMacroProfileValue(macroId int, macroAction *Actions) uint8 {
 				MousePositionX:        macroAction.MousePositionX,
 				MousePositionY:        macroAction.MousePositionY,
 				MousePositionAbsolute: macroAction.MousePositionAbsolute,
+				TextDelayMs:           macroAction.TextDelayMs,
+				TextDelayJitterMs:     macroAction.TextDelayJitterMs,
 			}
 			macros[macroId] = val
 			SaveProfile(profile, macros[macroId])

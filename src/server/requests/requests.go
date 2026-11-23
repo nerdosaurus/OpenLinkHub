@@ -201,8 +201,7 @@ type Payload struct {
 	MousePositionAbsolute         bool                  `json:"mousePositionAbsolute"`
 	MacroRepeat                   int                   `json:"macroRepeat"`
 	MacroRepeatDelay              int                   `json:"macroRepeatDelay"`
-	MacroTextDelay                int                   `json:"macroTextDelay"`
-	MacroTextDelayVariance        int                   `json:"macroTextDelayVariance"`
+	MacroTextDelayJitterMs        int                   `json:"textDelayJitterMs"`
 	Indicator                     *macro.Indicator      `json:"indicator"`
 	TextDelayMs                   int                   `json:"textDelayMs"`
 	TextDelayVarianceMs           int                   `json:"textDelayVarianceMs"`
@@ -4193,6 +4192,8 @@ func ProcessUpdateMacroValue(r *http.Request) *Payload {
 		MousePositionX:        req.MousePositionX,
 		MousePositionY:        req.MousePositionY,
 		MousePositionAbsolute: req.MousePositionAbsolute,
+		TextDelayMs:           req.TextDelayMs,
+		TextDelayJitterMs:     req.MacroTextDelayJitterMs,
 	}
 
 	res := macro.UpdateMacroValue(req.MacroId, req.MacroIndex, macroAction)
@@ -4261,23 +4262,7 @@ func ProcessUpdateMacroSettings(r *http.Request) *Payload {
 		}
 	}
 
-	if req.MacroTextDelay != 0 && (req.MacroTextDelay < 10 || req.MacroTextDelay > 1000) {
-		return &Payload{
-			Message: language.GetValue("txtInvalidTextDelay"),
-			Code:    http.StatusOK,
-			Status:  0,
-		}
-	}
-
-	if req.MacroTextDelayVariance < 0 || req.MacroTextDelayVariance > 500 {
-		return &Payload{
-			Message: language.GetValue("txtInvalidTextDelayVariance"),
-			Code:    http.StatusOK,
-			Status:  0,
-		}
-	}
-
-	res := macro.UpdateMacroSettings(req.MacroId, req.MacroRepeat, req.MacroRepeatDelay, req.MacroTextDelay, req.MacroTextDelayVariance)
+	res := macro.UpdateMacroSettings(req.MacroId, req.MacroRepeat, req.MacroRepeatDelay)
 	switch res {
 	case 0:
 		return &Payload{
@@ -4432,6 +4417,8 @@ func ProcessNewMacroProfileValue(r *http.Request) *Payload {
 	macroValue := req.MacroValue
 	macroDelay := req.MacroDelay
 	macroText := req.MacroText
+	textDelayMs := req.TextDelayMs
+	textDelayJitterMs := req.MacroTextDelayJitterMs
 
 	if macroId < 0 {
 		return &Payload{
@@ -4481,6 +4468,22 @@ func ProcessNewMacroProfileValue(r *http.Request) *Payload {
 		}
 	}
 
+	if macroType == 6 && (textDelayMs < 10 || textDelayMs > 1000) {
+		return &Payload{
+			Message: language.GetValue("txtInvalidTypingDelay"),
+			Code:    http.StatusOK,
+			Status:  0,
+		}
+	}
+
+	if macroType == 6 && (textDelayJitterMs < 0 || textDelayJitterMs > 500) {
+		return &Payload{
+			Message: language.GetValue("txtInvalidJitterDelay"),
+			Code:    http.StatusOK,
+			Status:  0,
+		}
+	}
+
 	if macroType == 20 {
 		mousePositionX = req.MousePositionX
 		mousePositionY = req.MousePositionY
@@ -4512,6 +4515,8 @@ func ProcessNewMacroProfileValue(r *http.Request) *Payload {
 		MousePositionX:        mousePositionX,
 		MousePositionY:        mousePositionY,
 		MousePositionAbsolute: mousePositionAbsolute,
+		TextDelayMs:           textDelayMs,
+		TextDelayJitterMs:     textDelayJitterMs,
 	}
 
 	res := macro.NewMacroProfileValue(macroId, macroAction)

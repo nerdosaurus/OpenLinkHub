@@ -3054,13 +3054,13 @@ func (d *Device) triggerKeyAssignment(value []byte, functionKey bool, modifierKe
 					case 6:
 						if v.ActionRepeat > 0 {
 							for z := 0; z < int(v.ActionRepeat); z++ {
-								inputmanager.InputControlKeyboardTextWithDelay(v.ActionText, macroProfile.TextDelayMs, macroProfile.TextDelayVarianceMs)
+								inputmanager.InputControlKeyboardTextWithDelay(v.ActionText, v.TextDelayMs, v.TextDelayJitterMs)
 								if v.ActionRepeatDelay > 0 && v.ActionRepeat > 1 {
 									time.Sleep(time.Duration(v.ActionRepeatDelay) * time.Millisecond)
 								}
 							}
 						} else {
-							inputmanager.InputControlKeyboardTextWithDelay(v.ActionText, macroProfile.TextDelayMs, macroProfile.TextDelayVarianceMs)
+							inputmanager.InputControlKeyboardTextWithDelay(v.ActionText, v.TextDelayMs, v.TextDelayJitterMs)
 						}
 						break
 					case 20:
